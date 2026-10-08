@@ -6,4 +6,4 @@ joblib
 streamlit
 plotly
 nfstream
-
+xgboost==3.4.1
