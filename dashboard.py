@@ -48,6 +48,14 @@ def load_model():
 
 model, le, feature_names = load_model()
 
+@st.cache_resource
+def load_pcap_model():
+    pcap_model = joblib.load("models/rf_model.pkl")
+    pcap_features = joblib.load("models/feature_names.pkl")
+    return pcap_model, pcap_features
+
+pcap_model, pcap_feature_names = load_pcap_model()
+
 # Load optional label->app-name mapping
 label_map = {}
 try:
@@ -152,32 +160,31 @@ if mode == "📂 Upload PCAP File":
             st.error("No flows found in this file.")
         else:
             # Use centralized prediction helper which ensures features are present
-            try:
-                # Scenario B XGBoost requires its 23 trained features.
-                # NFStream's columns are different, so don't predict directly from them.
-                required_features = set(feature_names)
-                available_features = required_features.intersection(df.columns)
+            # PCAP files use the NFStream-compatible Random Forest model.
+            missing = [
+                feature for feature in pcap_feature_names
+                if feature not in df.columns
+            ]
 
-                if available_features != required_features:
-                    missing = sorted(required_features - set(df.columns))
-                    st.warning(
-                        "This PCAP produces NFStream features, but the XGBoost "
-                        "model requires Scenario B features. Predictions are "
-                        "disabled to avoid misleading results."
-                    )
-                    st.write("Missing model features:", missing)
-                    st.stop()
+            if missing:
+                st.error(
+                    f"PCAP is missing {len(missing)} required Random Forest features."
+                )
+                st.write("Missing features:", missing)
+                st.stop()
 
-                df_pred = predict_xgboost_df(df)
-            except Exception:
-                # Fallback: predict inline using loaded model
-                available = [f for f in feature_names if f in df.columns]
-                X = df[available].replace([np.inf, -np.inf], np.nan).fillna(0)
-                preds = model.predict(X)
-                probs = model.predict_proba(X).max(axis=1)
-                df_pred = df.copy()
-                df_pred['pred_label'] = le.inverse_transform(preds)
-                df_pred['pred_confidence'] = (probs * 100).round(1)
+            X = (
+                df[pcap_feature_names]
+                .apply(pd.to_numeric, errors="coerce")
+                .replace([np.inf, -np.inf], np.nan)
+                .fillna(0)
+            )
+
+            df_pred = df.copy()
+            df_pred["pred_label"] = pcap_model.predict(X)
+            df_pred["pred_confidence"] = (
+                pcap_model.predict_proba(X).max(axis=1) * 100
+            ).round(1)
 
             # Normalize column names used in UI
             df = df_pred.copy()
@@ -271,9 +278,13 @@ def get_evaluation_results():
         output_dict=True,
         zero_division=0
     )
-    return matrix, pd.DataFrame(report).T, classes
+    accuracy = (actual == predicted).mean()
+    report_df = pd.DataFrame(report).T
 
-matrix, report_df, classes = get_evaluation_results()
+    return np.matrix, report_df, classes, accuracy
+
+matrix, report_df, classes, accuracy = get_evaluation_results()
+st.metric("Overall Accuracy", f"{accuracy:.2%}")
 
 st.write("Confusion Matrix — rows: actual, columns: predicted")
 st.dataframe(
@@ -282,7 +293,21 @@ st.dataframe(
 )
 
 st.write("Per-class Precision, Recall and F1-score")
-st.dataframe(report_df.round(3), use_container_width=True)
+metrics_df = report_df.loc[
+    classes, ["precision", "recall", "f1-score", "support"]
+].copy()
+
+metrics_df.index.name = "Traffic Class"
+st.dataframe(
+    metrics_df.round(3),
+    use_container_width=True
+)
+
+st.write("Macro and Weighted Averages")
+st.dataframe(
+    report_df.loc[["macro avg", "weighted avg"]].round(3),
+    use_container_width=True
+)
 
 # ================= DOMAIN / IP BLOCKLIST =================
 st.divider()
