@@ -6,9 +6,9 @@ from pathlib import Path
 from nfstream import NFStreamer
 
 
-DATASET_ZIP = Path(
-    r"C:/Users/REDACTED\Downloads\NonVPN-PCAPs-01.zip"
-)
+DATASET_ZIP = Path(os.environ.get(
+    "NONVPN_DATASET", Path.home() / "Downloads" / "NonVPN-PCAPs-01.zip"
+))
 
 
 def get_label(filename: str) -> str:

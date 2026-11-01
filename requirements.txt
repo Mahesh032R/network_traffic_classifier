@@ -1,9 +1,11 @@
 
-numpy
-pandas
-scikit-learn
-joblib
-streamlit
-plotly
-nfstream
+numpy==2.5.3
+pandas==3.0.6
+scipy==1.18.1
+scikit-learn==1.9.1
+joblib==1.6.0
+streamlit==1.65.0
+plotly==7.1.0
+nfstream==6.6.0
+psutil==7.2.2
 xgboost==3.4.1

@@ -1,0 +1,6 @@
+class,precision,recall,f1-score,support
+AIM_Chat,0.0,0.0,0.0,0
+Email,0.0,0.0,0.0,0
+Facebook_Audio,0.0,0.0,0.0,0
+Facebook_Chat,1.0,0.7395833333333334,0.8502994011976048,96
+Facebook_Video,0.0,0.0,0.0,0

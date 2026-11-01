@@ -1,0 +1,41 @@
+{
+  "direct": {
+    "youtube.com": "YouTube",
+    "youtu.be": "YouTube",
+    "instagram.com": "Instagram",
+    "whatsapp.com": "WhatsApp",
+    "google.com": "Google",
+    "chatgpt.com": "ChatGPT",
+    "chat.openai.com": "ChatGPT",
+    "openai.com": "OpenAI",
+    "360totalsecurity.com": "360 Total Security",
+    "tradedoubler.com": "Tradedoubler",
+    "facebook.com": "Facebook",
+    "github.com": "GitHub",
+    "netflix.com": "Netflix",
+    "reddit.com": "Reddit",
+    "wikipedia.org": "Wikipedia",
+    "microsoft.com": "Microsoft",
+    "bing.com": "Bing"
+  },
+  "resource": {
+    "googlevideo.com": "YouTube",
+    "ytimg.com": "YouTube",
+    "cdninstagram.com": "Instagram",
+    "whatsapp.net": "WhatsApp",
+    "gstatic.com": "Google",
+    "oaistatic.com": "OpenAI",
+    "oaiusercontent.com": "OpenAI"
+  },
+  "shared": [
+    "googleapis.com",
+    "googleusercontent.com",
+    "cloudfront.net",
+    "akamai.net",
+    "akamaized.net",
+    "fastly.net",
+    "azureedge.net",
+    "cloudflare.com",
+    "cloudflare.net"
+  ]
+}

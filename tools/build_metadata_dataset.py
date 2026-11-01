@@ -7,9 +7,9 @@ import pandas as pd
 from nfstream import NFStreamer
 
 
-DATASET_ZIP = Path(
-    r"C:/Users/REDACTED\Downloads\NonVPN-PCAPs-01.zip"
-)
+DATASET_ZIP = Path(os.environ.get(
+    "NONVPN_DATASET", Path.home() / "Downloads" / "NonVPN-PCAPs-01.zip"
+))
 
 OUTPUT_FILE = Path("data/training_flows_metadata.csv")
 

@@ -1,0 +1,6 @@
+actual / predicted,AIM_Chat,Email,Facebook_Audio,Facebook_Chat,Facebook_Video
+AIM_Chat,42,43,194,89,2
+Email,24,267,141,126,59
+Facebook_Audio,18,111,98,89,70
+Facebook_Chat,1,0,1,34,0
+Facebook_Video,6,2,43,11,147

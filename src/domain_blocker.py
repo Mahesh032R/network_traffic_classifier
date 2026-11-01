@@ -1,14 +1,20 @@
 
 from pathlib import Path
 import ipaddress
+import os
+import re
 
-HOSTS_FILE = Path(r"C:\Windows\System32\drivers\etc\hosts")
+HOSTS_FILE = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/drivers/etc/hosts"
 MARKER_START = "# BEGIN NetworkTrafficClassifier"
 MARKER_END = "# END NetworkTrafficClassifier"
 
 
 def _validate_domain(domain):
-    domain = domain.strip().lower().rstrip(".")
+    if not isinstance(domain, str):
+        raise ValueError("Enter a domain name before changing the Windows hosts file.")
+    domain = domain.strip().lower()
+    if domain.endswith("."):
+        domain = domain[:-1]
 
     # Accept a domain, not a URL or IP address.
     try:
@@ -18,6 +24,7 @@ def _validate_domain(domain):
         if str(exc) == "Enter a domain name, not an IP address.":
             raise
 
+    valid_label = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
     if (
         not domain
         or len(domain) > 253
@@ -25,14 +32,7 @@ def _validate_domain(domain):
         or ":" in domain
         or "://" in domain
         or "*" in domain
-        or any(
-            not label
-            or len(label) > 63
-            or label.startswith("-")
-            or label.endswith("-")
-            or not label.replace("-", "").isalnum()
-            for label in domain.split(".")
-        )
+        or any(not valid_label.fullmatch(label) for label in domain.split("."))
         or "." not in domain
     ):
         raise ValueError("Enter a valid domain, e.g. example.com.")
@@ -40,18 +40,23 @@ def _validate_domain(domain):
     return domain
 
 
-def block_domain(domain):
+def block_domain(domain, *, confirmed=False):
     domain = _validate_domain(domain)
+    if confirmed is not True:
+        raise PermissionError("Confirm the target domain before changing the Windows hosts file.")
 
     if not HOSTS_FILE.exists():
         raise FileNotFoundError(f"Hosts file not found: {HOSTS_FILE}")
 
-    text = HOSTS_FILE.read_text(encoding="utf-8", errors="replace")
+    text = HOSTS_FILE.read_text(encoding="utf-8")
+
+    if text.count(MARKER_START) > 1 or text.count(MARKER_END) > 1:
+        raise RuntimeError("Multiple managed hosts-file sections found; refusing to edit.")
 
     start = text.find(MARKER_START)
     end = text.find(MARKER_END)
 
-    if (start == -1) != (end == -1):
+    if (start == -1) != (end == -1) or (start != -1 and end < start):
         raise RuntimeError("Hosts file markers are incomplete; refusing to edit.")
 
     if start != -1:
@@ -63,7 +68,7 @@ def block_domain(domain):
         ):
             return f"{domain} is already blocked."
 
-        replacement = section + f"\n127.0.0.1 {domain}"
+        replacement = section.rstrip() + f"\n127.0.0.1 {domain}\n"
         text = text[:start] + replacement + text[end:]
     else:
         section = (
@@ -83,7 +88,9 @@ def unblock_domain(domain):
     if not HOSTS_FILE.exists():
         raise FileNotFoundError(f"Hosts file not found: {HOSTS_FILE}")
 
-    text = HOSTS_FILE.read_text(encoding="utf-8", errors="replace")
+    text = HOSTS_FILE.read_text(encoding="utf-8")
+    if text.count(MARKER_START) > 1 or text.count(MARKER_END) > 1:
+        raise RuntimeError("Multiple managed hosts-file sections found; refusing to edit.")
     start = text.find(MARKER_START)
     end = text.find(MARKER_END)
 

@@ -1,36 +1,29 @@
 
-import os
-import joblib
-import pandas as pd
 import numpy as np
 
+if __package__:
+    from .model_utils import MODEL_DIR, load_artifact, prepare_features, validate_model_features
+else:
+    from model_utils import MODEL_DIR, load_artifact, prepare_features, validate_model_features
 
-def load_xgboost_model(model_dir="models"):
-    model = joblib.load(
-        os.path.join(model_dir, "scenario_b_xgb_model.pkl")
+
+def load_xgboost_model(model_dir=MODEL_DIR):
+    model = load_artifact(model_dir, "scenario_b_xgb_model.pkl")
+    feature_names = validate_model_features(
+        model, load_artifact(model_dir, "scenario_b_xgb_feature_names.pkl")
     )
-    feature_names = joblib.load(
-        os.path.join(model_dir, "scenario_b_xgb_feature_names.pkl")
-    )
-    label_encoder = joblib.load(
-        os.path.join(model_dir, "scenario_b_xgb_label_encoder.pkl")
-    )
+    label_encoder = load_artifact(model_dir, "scenario_b_xgb_label_encoder.pkl")
+    if not np.array_equal(model.classes_, np.arange(len(label_encoder.classes_))):
+        raise ValueError("XGBoost model and label encoder classes do not match.")
 
     return model, feature_names, label_encoder
 
 
-def predict_xgboost_df(df, model_dir="models"):
+def predict_xgboost_df(df, model_dir=MODEL_DIR):
     model, feature_names, label_encoder = load_xgboost_model(model_dir)
 
+    X = prepare_features(df, feature_names)
     df = df.copy()
-
-    # Ensure the model receives the same features and order as training.
-    for feature in feature_names:
-        if feature not in df.columns:
-            df[feature] = 0
-
-    X = df[list(feature_names)].copy()
-    X = X.replace([np.inf, -np.inf], np.nan).fillna(0)
 
     predictions = model.predict(X).astype(int)
     probabilities = model.predict_proba(X).max(axis=1)

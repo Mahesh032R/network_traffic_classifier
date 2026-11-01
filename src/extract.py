@@ -34,23 +34,22 @@ def extract_from_pcap_zip(zip_path, pcap_filename=None, statistical_analysis=Tru
     zip_path = Path(zip_path)
     if not zip_path.exists():
         raise FileNotFoundError(zip_path)
+    if NFStreamer is None:
+        raise RuntimeError("NFStreamer (nfstream) is not available; check NFStream and Npcap.")
 
-    with zipfile.ZipFile(zip_path, "r") as z:
+    with tempfile.TemporaryDirectory(prefix="pcap_extract_") as tmpdir, zipfile.ZipFile(zip_path, "r") as z:
         candidates = [n for n in z.namelist() if n.lower().endswith((".pcap", ".pcapng"))]
         if not candidates:
             raise ValueError("No pcap/pcapng files found inside the zip")
         chosen = pcap_filename or candidates[0]
-        tmpdir = tempfile.mkdtemp(prefix="pcap_extract_")
+        if chosen not in candidates:
+            raise ValueError(f"PCAP member not found in archive: {chosen}")
         extracted_path = Path(tmpdir) / Path(chosen).name
         with z.open(chosen) as zf, open(extracted_path, "wb") as outf:
             outf.write(zf.read())
 
-    if NFStreamer is None:
-        raise RuntimeError("NFStreamer (nfstream) is not available in this environment")
-
-    streamer = NFStreamer(source=str(extracted_path), statistical_analysis=statistical_analysis)
-    df = streamer.to_pandas()
-    return df
+        streamer = NFStreamer(source=str(extracted_path), statistical_analysis=statistical_analysis)
+        return streamer.to_pandas()
 
 
 if __name__ == "__main__":

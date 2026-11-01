@@ -1,10 +1,12 @@
 import zipfile
+import os
+from pathlib import Path
 from io import StringIO
 
 import pandas as pd
 
 
-DATASET_ZIP = r"C:/Users/REDACTED\Downloads\Scenario B-ARFF.zip"
+DATASET_ZIP = Path.home() / "Downloads" / "Scenario B-ARFF.zip"
 
 ARFF_FILE = (
     "Scenario B-ARFF/"
@@ -39,9 +41,17 @@ FEATURE_NAMES = [
 ]
 
 
-def load_scenario_b():
+def load_scenario_b(dataset_zip=None):
+    dataset_zip = Path(dataset_zip or os.environ.get("SCENARIO_B_DATASET", DATASET_ZIP))
+    if not dataset_zip.is_file():
+        raise FileNotFoundError(
+            f"Scenario B dataset not found: {dataset_zip}. "
+            "Set SCENARIO_B_DATASET to the Scenario B-ARFF.zip path."
+        )
 
-    with zipfile.ZipFile(DATASET_ZIP, "r") as archive:
+    with zipfile.ZipFile(dataset_zip, "r") as archive:
+        if ARFF_FILE not in archive.namelist():
+            raise ValueError(f"Scenario B archive must contain {ARFF_FILE}.")
 
         data = archive.read(
             ARFF_FILE
@@ -70,7 +80,10 @@ def load_scenario_b():
 
     df = pd.read_csv(
         StringIO(csv_data),
-        header=None
+        header=None,
+        comment="%",
+        skipinitialspace=True,
+        na_values=["?"]
     )
 
     if df.shape[1] != 24:
@@ -79,6 +92,9 @@ def load_scenario_b():
         )
 
     df.columns = FEATURE_NAMES + ["label"]
+    if df.empty or df["label"].isna().any():
+        raise ValueError("Scenario B dataset must contain flows with nonempty labels.")
+    df["label"] = df["label"].astype(str).str.strip()
 
     return df
 

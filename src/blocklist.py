@@ -12,6 +12,8 @@ BLOCKLIST_FILE = DATA_DIR / "blocklist.json"
 
 def normalize_target(target):
     """Validate and normalize a domain name or IP address."""
+    if not isinstance(target, str):
+        raise ValueError("Enter a domain name or IP address.")
     target = target.strip().lower()
 
     if not target:

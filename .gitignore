@@ -3,3 +3,15 @@ __pycache__/
 *.pyc
 temp_upload/
 data/*.csv
+data/blocklist.json
+models/experiments/
+.agents/
+*.pcap
+*.pcapng
+*.log
+logs/
+exports/
+live_service_flows*.csv
+.env
+.env.*
+!.env.example

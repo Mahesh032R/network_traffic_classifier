@@ -10,7 +10,10 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import train_test_split
 
-from scenario_b import load_scenario_b, FEATURE_NAMES
+if __package__:
+    from .scenario_b import load_scenario_b, FEATURE_NAMES
+else:
+    from scenario_b import load_scenario_b, FEATURE_NAMES
 
 
 MODEL_DIR = "models"
