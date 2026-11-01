@@ -45,7 +45,7 @@ class ServiceIdentificationTests(unittest.TestCase):
         self.assertEqual(self.identify(requested_server_name='chat.openai.com.evil.example')['Detected Service'], 'Unknown')
 
     def test_verified_provider_domains_and_resource_limits(self):
-        self.assertEqual(self.identify(requested_server_name='redacted.invalid')['Detected Service'],
+        self.assertEqual(self.identify(requested_server_name='test.360totalsecurity.com')['Detected Service'],
                          '360 Total Security')
         self.assertEqual(self.identify(requested_server_name='vht.tradedoubler.com')['Detected Service'],
                          'Tradedoubler')

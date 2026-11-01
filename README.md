@@ -109,6 +109,16 @@ An unavailable evaluation dataset displays a warning while the other app feature
 
 Run the regression suite without installing a test framework:
 
+The complete 77-test run uses locally generated `data/test_flows.csv` and `data/training_flows.csv` from the cited dataset. Those CSVs are intentionally ignored and are not in a fresh GitHub clone. The Scenario B metric test also needs the external archive; two optional capture integrations need `TRAFFIC_TEST_PCAP`. A fresh clone cannot reproduce the full count until the public dataset-derived fixtures are generated locally. Never substitute private runtime captures for test fixtures.
+
+After obtaining the public archive from UNB, generate the local RF tables from the project root without retraining the saved model:
+
+```powershell
+$env:NONVPN_DATASET = 'C:\path\to\NonVPN-PCAPs-01.zip'
+.\.venv\Scripts\python.exe -B tools\build_training_dataset.py
+.\.venv\Scripts\python.exe -B tools\split_dataset.py
+```
+
 ```powershell
 .\.venv\Scripts\python.exe -B -m unittest discover -s tests -v
 ```
@@ -125,9 +135,9 @@ Before the service-identification changes, physical verification used a local Wi
 
 Prior service-identification validation: 61 regression tests passed with both real PCAPNG integration tests enabled; all 37 Python files passed syntax parsing, seven core source modules imported, `git diff --check` passed, and headless Streamlit health/root requests returned HTTP 200. The existing PCAPNG produced 91 completed flows through the isolated worker and 91 RF estimates; its observed metadata identified no mapped contacted services, so all 91 correctly remained Unknown. A bounded physical capture on a local Wi-Fi adapter collected 270 real flows and 270 RF estimates. Observed TLS hostnames identified YouTube and ChatGPT; nDPI also identified Google and Microsoft flows. A separate headless dashboard run captured 12 real flows, displayed ChatGPT in the recent-flow table, rendered all four live charts, and stopped cleanly. An Instagram request timed out, so Instagram identification remains unverified on this adapter. These checks demonstrate observed service evidence in this environment, not universal detection accuracy.
 
-Unknown-reason development used a separate 25-flow physical Wi-Fi capture. Reapplying the old and new service rules to the **same captured metadata** changed 1 identified / 24 Unknown to 13 identified / 12 Unknown. All 12 new identifications had the observed `redacted.invalid` hostname. The remaining 12 had no server hostname: six were generic TLS and six had nDPI `Unknown`. These figures describe that one short sample, not the user's earlier 468-flow dashboard session or a general identification rate.
+Unknown-reason development used a separate 25-flow physical Wi-Fi capture. Reapplying the old and new service rules to the **same captured metadata** changed 1 identified / 24 Unknown to 13 identified / 12 Unknown. All 12 new identifications had an observed provider hostname. The remaining 12 had no server hostname: six were generic TLS and six had nDPI `Unknown`. These figures describe that one short sample, not the user's earlier 468-flow dashboard session or a general identification rate.
 
-After this change, another bounded physical Npcap check collected eight flows and identified two `redacted.invalid` flows as 360 Total Security. The remaining six were three DNS-only, one TLS without a hostname, and two without a usable nDPI application or hostname. The worker stopped cleanly and carried the documented nDPI metadata fields. No dependencies were installed or upgraded, and no models were retrained.
+After this change, another bounded physical Npcap check collected eight flows and identified two flows using provider-hostname evidence. The remaining six were three DNS-only, one TLS without a hostname, and two without a usable nDPI application or hostname. The worker stopped cleanly and carried the documented nDPI metadata fields. No dependencies were installed or upgraded, and no models were retrained.
 
 Final checks for the Unknown-reason update: 63 regression tests passed with both optional real PCAPNG integrations enabled, 37 Python files passed syntax parsing, eight core modules imported, `git diff --check` passed, and headless Streamlit health and root requests returned HTTP 200.
 
@@ -140,5 +150,7 @@ Live flows and recent-flow CSV exports may include personal IP addresses, contac
 If no adapters appear, check that Npcap is installed, restart PowerShell after installation, and try an elevated shell if the driver was installed with restricted access. If flows stay at zero, confirm the chosen adapter carries traffic, generate a fresh connection, and wait for a completed flow window. If the model or Scenario B evaluation is unavailable, check the `models/` artifacts or the `SCENARIO_B_DATASET` path; the rest of the dashboard should remain available. A hosts file that is not valid UTF-8 is rejected for writing to avoid corrupting its contents; inspect and back it up before editing manually. Firewall and hosts tests use mocks and temporary files, so exercise real enforcement and Unblock only on an authorized demonstration machine.
 
 ## Reproducible model audit
+
+Dataset attribution: University of New Brunswick, Canadian Institute for Cybersecurity, [ISCXVPN2016 VPN-nonVPN dataset](https://www.unb.ca/cic/datasets/vpn.html). Cite Gerard Drapper Gil, Arash Habibi Lashkari, Mohammad Mamun, and Ali A. Ghorbani, “Characterization of Encrypted and VPN Traffic Using Time-Related Features,” ICISSP 2016, pp. 407–414. UNB's [dataset redistribution guidance](https://www.unb.ca/cic/datasets/) requires citing both the dataset and its research paper.
 
 Run `.\.venv\Scripts\python.exe -B tools\evaluate_models.py` from the project root. The generated [model evaluation report](reports/model_evaluation/README.md), [machine-readable results](reports/model_evaluation/results.json), class metrics, and confusion-matrix CSVs document both saved models separately. The saved Random Forest exactly reproduced its local PCAP-derived training run and scored 56.72% on its existing test PCAPs; related a/b recording segments overlap that split, so this is not a five-class independent session score. A new session-held-out comparison scored 36.34% for a freshly retrained RF baseline and 34.18% for a deduplicated, source-capped candidate. The candidate remains under `models/experiments/rf_session_candidate/`; the dashboard still loads `models/rf_model.pkl`. The XGBoost 91.20% result reproduces on the original stratified random-flow split, which lacks session IDs. XGBoost was not retrained. See the report for per-class support, precision, recall, F1, confusion matrices, duplicate-vector counts, and academic limitations.
