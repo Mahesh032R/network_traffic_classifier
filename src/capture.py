@@ -12,6 +12,7 @@ import tempfile
 import threading
 import time
 import weakref
+import uuid
 
 import psutil
 
@@ -108,7 +109,7 @@ class CaptureSession:
     All UI calls stay in dashboard.py. Launching the worker as a separate module
     prevents Windows multiprocessing from importing the Streamlit script.
     """
-    def __init__(self, max_flows=MAX_RECENT_FLOWS, lease_seconds=30, startup_timeout=20):
+    def __init__(self, max_flows=MAX_RECENT_FLOWS, lease_seconds=30, startup_timeout=20, activity=None):
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread = None
@@ -119,10 +120,14 @@ class CaptureSession:
         self._heartbeat = time.monotonic()
         self._flows = deque(maxlen=max_flows)
         self._logs = deque(maxlen=10)
+        self.activity = activity
         self._reset()
         _sessions.add(self)
 
     def _reset(self):
+        self._session_id = uuid.uuid4().hex
+        self._sequence = 0
+        self._event_ids = deque(maxlen=5000)
         self._flows.clear()
         self._logs.clear()
         self._status = "stopped"
@@ -150,6 +155,8 @@ class CaptureSession:
             if self._thread is not None and self._thread.is_alive():
                 return False
             self._reset()
+            if self.activity and not self.activity.acquire(self._session_id, interface.strip()):
+                raise RuntimeError('Another dashboard session is already monitoring. Stop it before starting a capture here.')
             self._interface = interface.strip()
             self._started_at = datetime.now(timezone.utc).isoformat()
             self._status = "starting"
@@ -202,6 +209,11 @@ class CaptureSession:
             elif kind == "diagnostic":
                 self._logs.append(str(message["message"]))
             elif kind == "flow":
+                supplied_id = message.get('event_id')
+                if supplied_id is not None and supplied_id in self._event_ids:
+                    return
+                if supplied_id is not None:
+                    self._event_ids.append(supplied_id)
                 row = message["row"]
                 packets, byte_count = int(row["bidirectional_packets"]), int(row["bidirectional_bytes"])
                 self._flows.append(dict(row))
@@ -225,6 +237,12 @@ class CaptureSession:
                 stats["Flows"] += 1
                 stats["Packets"] += packets
                 stats["Bytes"] += byte_count
+                self._sequence += 1
+                if self.activity:
+                    try:
+                        self.activity.enqueue_flow(self._session_id + ':' + str(supplied_id or self._sequence), row)
+                    except Exception:
+                        self._logs.append('Local activity recording unavailable; capture continues.')
 
     def _read_stdout(self, process):
         for line in process.stdout:
@@ -312,6 +330,8 @@ class CaptureSession:
                     self._error = f"Capture worker exited unexpectedly: {detail}"
                 self._status = "error" if self._error else "stopped"
                 self._process = None
+                if self.activity:
+                    self.activity.release(self._session_id)
 
 
 @atexit.register

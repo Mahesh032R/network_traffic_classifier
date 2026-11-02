@@ -7,9 +7,10 @@ from sklearn.model_selection import train_test_split
 from src.scenario_b import load_scenario_b
 from src.blocking_ui import render_blocking_center
 from src.model_utils import prepare_features, PROJECT_ROOT
+from src.activity_ui import render_activity_settings
 
 
-def render_settings(model, le, feature_names, detect_capture_interfaces, recent_flows=()):
+def render_settings(model, le, feature_names, detect_capture_interfaces, recent_flows=(), activity=None):
     st.caption("Adapter preferences, model evaluation, and local security controls.")
     with st.expander("Network adapter preference"):
         try:
@@ -114,3 +115,5 @@ def render_settings(model, le, feature_names, detect_capture_interfaces, recent_
     with st.expander("Project information and troubleshooting"):
         st.markdown("Service names use nDPI or observed hostnames. Process names require a matching local socket; browser process attribution does not reveal a tab. Random Forest and Scenario B are separate historical tasks. Encrypted DNS, ECH, QUIC, and shared infrastructure can leave flows unknown or ambiguous.")
         st.markdown("For capture errors, verify Npcap, the chosen adapter, and permissions. For model errors, check the saved artifacts and Python dependencies. See README.md for reproducible setup and data requirements.")
+    if activity is not None:
+        render_activity_settings(activity)

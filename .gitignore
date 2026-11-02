@@ -16,3 +16,10 @@ live_service_flows*.csv
 .env.*
 !.env.example
 .streamlit/secrets.toml
+data/local_history/
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*

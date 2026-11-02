@@ -11,9 +11,10 @@ from .model_utils import MODEL_DIR
 from .predict import load_model, predict_with_model
 from .service_identification import identify_service
 from .process_attribution import SocketSampler, UNKNOWN as UNKNOWN_PROCESS
+from .telemetry import flow_direction, resolve_adapter
 
 
-def process_flow(flow, model_bundle=None, label_map=None, process_sampler=None):
+def process_flow(flow, model_bundle=None, label_map=None, process_sampler=None, local_addresses=None):
     """Keep observed endpoints/stats; classify only a complete RF feature vector."""
     fields = ("src_ip", "dst_ip", "src_port", "dst_port", "protocol",
               "bidirectional_packets", "bidirectional_bytes", "application_name",
@@ -29,6 +30,8 @@ def process_flow(flow, model_bundle=None, label_map=None, process_sampler=None):
         "application_name", "application_category_name", "application_is_guessed",
         "application_confidence", "requested_server_name", "src_port", "dst_port")}))
     row.update(process_sampler.match(row) if process_sampler else UNKNOWN_PROCESS)
+    if local_addresses is not None:
+        row['Upload Bytes'], row['Download Bytes'], row['Remote IP'] = flow_direction(row, local_addresses)
     row.update({"Predicted App": "Not classified", "Confidence": None,
                 "Prediction Status": "Random Forest model unavailable"})
     if model_bundle is None:
@@ -84,18 +87,21 @@ def run_capture(source, stop_event, emit_message=emit, streamer_factory=None, st
         start_control()
     emit_message({"type": "ready"})
     sampler = SocketSampler() if os.name == "nt" and str(source).startswith(r"\Device\NPF_") else None
+    binding = resolve_adapter(source) if sampler else None
     try:
         if sampler:
             sampler.start()
         iterator = iter(streamer)
-        for flow in iterator:
+        for sequence, flow in enumerate(iterator, 1):
             if stop_event.is_set():
                 try:
                     iterator.throw(KeyboardInterrupt)
                 except (StopIteration, KeyboardInterrupt):
                     pass
                 break
-            emit_message({"type": "flow", "row": process_flow(flow, bundle, label_map, sampler)})
+            emit_message({"type": "flow", "event_id": sequence,
+                          "row": process_flow(flow, bundle, label_map, sampler,
+                                              binding[1] if binding else None)})
     finally:
         if sampler:
             sampler.stop()

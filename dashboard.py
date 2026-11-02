@@ -1,5 +1,6 @@
 """Network intelligence dashboard: observed services first, model estimates separate."""
 import json
+import os
 import tempfile
 from pathlib import Path
 
@@ -16,6 +17,8 @@ from src.predict import load_model as load_rf_model
 from src.predict_xgboost import load_xgboost_model
 from src.settings_ui import render_settings
 from src.blocking_ui import render_monitor_blocking
+from src.activity_ui import activity_resource, render_rate_cards, render_history, render_alerts
+from src.model_utils import PROJECT_ROOT
 
 
 st.set_page_config(page_title="Network intelligence", page_icon=":material/network_check:",
@@ -73,6 +76,7 @@ def show_evidence_summary(frame):
                  alt="Detected services, connection counts, and transferred bytes")
 
 
+activity = activity_resource(str(Path(os.environ.get('NTC_HISTORY_DIR', PROJECT_ROOT / 'data/local_history')) / 'activity.sqlite3'))
 previous_runtime = st.session_state.get("live_capture_runtime")
 if isinstance(previous_runtime, dict):
     previous_runtime["stop_event"].set()
@@ -80,7 +84,7 @@ if isinstance(previous_runtime, dict):
     if previous_thread is not None and previous_thread.is_alive():
         st.session_state["legacy_capture_thread"] = previous_thread
 if not isinstance(previous_runtime, CaptureSession):
-    st.session_state["live_capture_runtime"] = CaptureSession()
+    st.session_state["live_capture_runtime"] = CaptureSession(activity=activity)
 live_capture = st.session_state["live_capture_runtime"]
 
 with st.sidebar:
@@ -178,63 +182,23 @@ if section == "Monitor":
         if snapshot["warning"]:
             st.warning(snapshot["warning"])
         st.caption(f"Capture status: {snapshot['status']} · Completed flows appear after the capture window closes. Stop also runs when you leave Monitor.")
+        render_rate_cards(activity, snapshot['running'])
         with st.container(horizontal=True):
             st.metric("Captured flows", snapshot["total_flows"], border=True)
             st.metric("Detected services", len(snapshot["service_counts"]), border=True)
             st.metric("Unknown flows", snapshot["unknown_flows"], border=True)
-            st.metric("Transferred data", f"{snapshot['bytes'] / 1_000_000:.2f} MB", border=True)
+            st.metric("Completed-flow data", f"{snapshot['bytes'] / 1_000_000:.2f} MB", border=True)
+
+        render_history(activity, snapshot)
 
         recent = pd.DataFrame(snapshot["flows"])
         if recent.empty:
             st.info("Waiting for completed flows. Open a site or generate traffic on the selected adapter."
                     if snapshot["running"] else "Select an adapter and start monitoring to see network activity.")
-        else:
-            st.subheader("Website & application usage")
-            count_rows = sorted(snapshot["service_counts"].items(), key=lambda pair: pair[1], reverse=True)
-            usage_rows = sorted(snapshot["service_bytes"].items(), key=lambda pair: pair[1], reverse=True)
-            chart_left, chart_right = st.columns(2)
-            with chart_left:
-                st.caption("Connections by detected service")
-                if count_rows:
-                    st.bar_chart(pd.DataFrame(count_rows, columns=["Service", "Connections"]).set_index("Service"),
-                                 alt="Connections by evidence-based detected service")
-                else:
-                    st.info("No identified services yet.")
-            with chart_right:
-                st.caption("Transferred bytes by service, including unresolved traffic")
-                st.bar_chart(pd.DataFrame(usage_rows, columns=["Service", "Bytes"]).set_index("Service"),
-                             alt="Transferred bytes by detected or unknown service")
-            st.caption("Recent traffic trend · completed flows retained in this browser session")
-            times = pd.to_datetime(recent["first_seen"], errors="coerce", utc=True).dt.floor("min")
-            trend = recent.assign(Minute=times).dropna(subset=["Minute"]).groupby("Minute").size()
-            if not trend.empty:
-                st.line_chart(trend, alt="Recent completed flows by minute")
-
-            activity = recent.copy()
-            for column, default in (("Process Name", "Unknown Process"),
-                                    ("Detected Hostname", "Unobserved"),
-                                    ("Upload Bytes", None), ("Download Bytes", None)):
-                if column not in activity:
-                    activity[column] = default
-            activity["Process Name"] = activity["Process Name"].fillna("Unknown Process")
-            activity["Detected Hostname"] = activity["Detected Hostname"].fillna("Unobserved")
-            activity["Upload Bytes"] = pd.to_numeric(activity["Upload Bytes"], errors="coerce")
-            activity["Download Bytes"] = pd.to_numeric(activity["Download Bytes"], errors="coerce")
-            overview = (activity.groupby(["Detected Service", "Process Name", "Detected Hostname",
-                                          "Evidence Source", "Identification Status"],
-                                         dropna=False)
-                        .agg(Connections=("Detected Service", "size"),
-                             Bytes=("bidirectional_bytes", "sum"),
-                             Upload_Bytes=("Upload Bytes", lambda values: values.sum(min_count=1)),
-                             Download_Bytes=("Download Bytes", lambda values: values.sum(min_count=1)),
-                             Last_seen=("first_seen", "max"))
-                        .sort_values("Bytes", ascending=False).reset_index().head(20))
-            st.dataframe(overview, width="stretch", hide_index=True,
-                         alt="Recent service and process activity with connection counts and directional usage")
-            st.caption("Upload and download are shown only when an exact local socket match establishes flow direction. Other rows retain total bytes.")
 
     live_capture_view()
     render_monitor_blocking(live_capture.snapshot()["flows"])
+    render_alerts(activity)
 
     @st.fragment(run_every="2s")
     def recent_connections_view():
@@ -351,4 +315,4 @@ else:
         xgb_model, xgb_features, encoder = None, [], None
         st.warning(f"Scenario B model unavailable: {exc}")
     render_settings(xgb_model, encoder, xgb_features, detect_capture_interfaces,
-                    live_capture.snapshot()["flows"])
+                    live_capture.snapshot()["flows"], activity=activity)

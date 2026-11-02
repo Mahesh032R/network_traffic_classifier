@@ -221,7 +221,7 @@ class DashboardTests(unittest.TestCase):
         self.dataset = folder / 'scenario.zip'
         with zipfile.ZipFile(self.dataset, 'w') as archive:
             archive.writestr(ARFF_FILE, arff_bytes())
-        for patcher in [patch.dict(os.environ, {'SCENARIO_B_DATASET': str(self.dataset)}),
+        for patcher in [patch.dict(os.environ, {'SCENARIO_B_DATASET': str(self.dataset), 'NTC_HISTORY_DIR': str(folder / 'history')}),
                         patch.object(blocklist, 'DATA_DIR', folder),
                         patch.object(blocklist, 'BLOCKLIST_FILE', folder / 'blocklist.json'),
                         patch.object(capture, 'list_capture_interfaces', return_value=[{'name': 'test-interface', 'description': 'Test adapter'}])]:
@@ -230,6 +230,7 @@ class DashboardTests(unittest.TestCase):
 
     def app(self):
         app = AppTest.from_file(str(PROJECT_ROOT / 'dashboard.py'), default_timeout=45).run()
+        self.addCleanup(app.session_state['live_capture_runtime'].activity.close)
         self.addCleanup(app.session_state['live_capture_runtime'].stop)
         return app
 

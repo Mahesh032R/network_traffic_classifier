@@ -133,6 +133,8 @@ class SocketSampler:
                 upload, download = int(flow[first]), int(flow[second])
             except (KeyError, TypeError, ValueError):
                 pass
+        if any(ipaddress.ip_address(endpoint[0]).is_loopback for endpoint in key[1:]):
+            upload = download = None
         return {"Process Name": name, "Process PID": pid,
                 "Process Executable": executable,
                 "Process Evidence": "Exact connected socket and capture-time overlap",
