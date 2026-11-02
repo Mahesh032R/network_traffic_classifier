@@ -2,6 +2,7 @@ import pandas as pd
 import os
 import zipfile
 import tempfile
+import shutil
 from pathlib import Path
 
 try:
@@ -44,11 +45,21 @@ def extract_from_pcap_zip(zip_path, pcap_filename=None, statistical_analysis=Tru
         chosen = pcap_filename or candidates[0]
         if chosen not in candidates:
             raise ValueError(f"PCAP member not found in archive: {chosen}")
+        member = z.getinfo(chosen)
+        if member.file_size > 200 * 1024 * 1024:
+            raise ValueError("Capture inside ZIP exceeds the 200 MB safety limit.")
         extracted_path = Path(tmpdir) / Path(chosen).name
         with z.open(chosen) as zf, open(extracted_path, "wb") as outf:
-            outf.write(zf.read())
+            signature = zf.read(4)
+            if signature not in {b"\xd4\xc3\xb2\xa1", b"\xa1\xb2\xc3\xd4",
+                                 b"\x4d\x3c\xb2\xa1", b"\xa1\xb2\x3c\x4d",
+                                 b"\x0a\x0d\x0d\x0a"}:
+                raise ValueError("ZIP member is not a valid PCAP or PCAPNG capture.")
+            outf.write(signature)
+            shutil.copyfileobj(zf, outf, length=1024 * 1024)
 
-        streamer = NFStreamer(source=str(extracted_path), statistical_analysis=statistical_analysis)
+        streamer = NFStreamer(source=str(extracted_path), statistical_analysis=statistical_analysis,
+                              n_dissections=32)
         return streamer.to_pandas()
 
 

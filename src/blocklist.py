@@ -77,7 +77,7 @@ def list_blocked():
     return data["domains"], data["ips"]
 
 
-def add_target(target):
+def add_target(target, *, kind=None, service=None, evidence=None):
     target = normalize_target(target)
     data = _load()
 
@@ -87,18 +87,51 @@ def add_target(target):
     except ValueError:
         category = "domains"
 
+    if kind not in (None, "IP", "Domain", "Website"):
+        raise ValueError("Blocklist type must be IP, Domain, or Website.")
+    if kind == "Website" and (category != "domains" or not isinstance(service, str) or not service.strip()):
+        raise ValueError("A website entry requires an exact domain and observed service name.")
+    if kind == "Domain" and category != "domains" or kind == "IP" and category != "ips":
+        raise ValueError("Blocklist type does not match the target.")
+
     if target in data[category]:
         return False, f"{target} is already in the blocklist."
 
     data[category].append(target)
-    data["events"].append({
+    event = {
         "action": "added",
         "target": target,
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    })
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "kind": kind or ("IP" if category == "ips" else "Domain"),
+    }
+    if kind == "Website":
+        event["service"] = service.strip()
+        event["evidence"] = str(evidence or "Observed hostname")
+    data["events"].append(event)
     _save(data)
 
     return True, f"{target} added to the blocklist."
+
+
+def list_entries():
+    """Current intended targets with their last addition metadata."""
+    data = _load()
+    latest = {}
+    for event in data["events"]:
+        if event.get("action") == "added":
+            latest[event.get("target")] = event
+    entries = []
+    for category in ("ips", "domains"):
+        for target in data[category]:
+            event = latest.get(target, {})
+            entries.append({
+                "target": target,
+                "type": event.get("kind") or ("IP" if category == "ips" else "Domain"),
+                "service": event.get("service"),
+                "evidence": event.get("evidence"),
+                "created": event.get("timestamp") or "Date unavailable",
+            })
+    return entries
 
 
 def remove_target(target):

@@ -1,12 +1,12 @@
 # AI-Powered Encrypted Network Traffic Classifier
 
-Existing Streamlit application for classifying encrypted network flows on Windows.
+Streamlit network intelligence dashboard for Windows. The three sections are **Monitor** (live evidence, traffic usage, and everyday blocking controls), **Analyze file** (one validated uploader), and **Settings** (adapter preference, model evaluation, and advanced blocking controls).
 
-- PCAP, PCAPNG, or ZIP containing a capture: NFStream extraction and the trained Random Forest (61 features).
+- PCAP, PCAPNG, or ZIP containing a capture: NFStream extraction, evidence-based service identification, and a separate Random Forest estimate (61 features).
 - Scenario B CSV/ARFF: the trained XGBoost classifier (23 features, seven traffic classes).
-- Live capture: a background NFStream capture with observed service evidence, charts, recent flows, CSV export, and separate Random Forest predictions.
+- Live capture: a background NFStream capture with observed service evidence, conservative Windows process attribution, charts, searchable recent flows, CSV export, and separate Random Forest estimates.
 - Scenario B evaluation: the original stratified 80/20 split with `random_state=42`, confusion matrix, precision, recall, and F1 scores.
-- Persistent domain/IP blocklist, outbound Windows Firewall rules, and managed Windows hosts-file entries.
+- Blocking & Protection: device-local IP firewall rules, exact domain/observed website hosts entries, intended-versus-enabled status, confirmation, and rollback.
 
 ## Architecture and result meanings
 
@@ -14,18 +14,20 @@ Existing Streamlit application for classifying encrypted network flows on Window
 flowchart LR
     A[PCAP / PCAPNG / ZIP] --> B[NFStream flow extraction]
     C[Windows Npcap adapter] --> D[Isolated capture worker] --> B
+    D --> P[Exact local socket + time overlap] --> Q[Process or Unknown Process]
     B --> E[61-feature Random Forest]
     B --> F[nDPI + hostname service identification]
     E --> G[Historical class estimate + confidence]
     F --> H[Detected service + evidence / Unknown reason]
     G --> I[Streamlit dashboard]
     H --> I
+    Q --> I
     J[Scenario B CSV / ARFF] --> K[23-feature XGBoost] --> L[Traffic-category estimate / recorded-split evaluation]
     L --> I
-    I --> M[Confirmed Windows Firewall / hosts actions]
+    I --> M[Confirmed device-local Windows Firewall / hosts actions]
 ```
 
-Detected services use observed protocol or hostname evidence. The Random Forest predicts five historical application classes; XGBoost predicts seven separate Scenario B traffic categories. Unknown and Ambiguous preserve uncertainty. None of these outputs proves a Windows process identity. The [final project report](reports/FINAL_PROJECT_REPORT.md) and [model audit](reports/model_evaluation/README.md) contain the demonstration method and per-class results.
+Detected services use observed protocol or hostname evidence. A separate read-only Windows socket sampler can associate a flow with a process only when protocol, both endpoint addresses and ports, and capture time overlap exactly. A service name never proves the process or browser tab. Random Forest predicts five historical application classes; XGBoost predicts seven separate Scenario B traffic categories. Unknown and Ambiguous preserve uncertainty. The [final project report](reports/FINAL_PROJECT_REPORT.md) and [model audit](reports/model_evaluation/README.md) contain the demonstration method and per-class results.
 
 ## Windows 11 setup and launch
 
@@ -53,11 +55,31 @@ NFStream capture requires Npcap and a working capture driver. The live-capture d
 .\.venv\Scripts\python.exe -B tools\test_live_capture.py --list
 ```
 
-Run PowerShell as Administrator when required for live capture, firewall changes, or hosts-file writes. Adding a blocklist entry records it locally in ignored `data/blocklist.json`; enforcement uses separate target-specific confirmation forms for Block IP / Block Domain. Unblock IP / Unblock Domain remove only this application's managed rule or hosts entry. Domain enforcement affects the selected hostname on this computer and does not automatically cover subdomains.
+Run PowerShell as Administrator when required for live capture, firewall changes, or hosts-file writes. **Monitor → Blocking & Protection** sits directly below Website & application usage. It offers observed-hostname and remote-IP Block actions, compact Website / Domain / IP previews, and the active-rule table. **Settings → Blocking & Protection** retains advanced choices, including inbound IP rules. Both views use the same backend and ignored runtime intent ledger at `data/blocklist.json`. Windows enforcement requires a preview and a dialog where the exact targets and coverage are confirmed. Removal also requires a dialog. Blocking affects this Windows device only.
 
-Live capture uses one isolated Python worker and one NFStream meter. Windows multiprocessing imports the worker module rather than executing the Streamlit dashboard in child processes. Each browser session keeps one controller across reruns. Start rejects duplicate workers. Stop requests cooperative cleanup, then terminates and joins the owned process tree if needed, including on idle adapters. A session-specific temporary stop file avoids sharing stdin with Windows multiprocessing. Switching away from Live Capture stops the session; a disconnected or nonrefreshing browser loses its capture lease after 30 seconds. Normal interpreter shutdown also cleans up sessions. Cleanup errors block restarting that controller and remain visible.
+### Blocking & Protection
 
-The dashboard refreshes capture status, cumulative flow/TCP/UDP/packet/byte counters, and charts every two seconds. Packet/byte totals refer to completed flows, not every packet currently on the wire. At most 500 recent rows and ten diagnostics are retained; lifetime counters continue increasing. Idle/active flow timeouts are five/ten seconds, so ongoing traffic is split into bounded flow windows.
+**IP address:** Enter an exact IPv4 or IPv6 address. Outbound is the default; inbound is an explicit advanced choice. The preview warns that shared hosting and CDNs can make IP blocking affect unrelated sites. Loopback, link-local, multicast, unspecified, and broadcast destinations are refused. The app checks local interface addresses, default gateways, and active DNS resolvers read-only. A critical match requires an additional acknowledgement; if the inventory cannot be read, IP enforcement is disabled. A duplicate, disabled, or conflicting managed rule is not silently replaced. The status table verifies the rule's target, direction, action, enabled state, and unrestricted filters before treating it as enabled. Remove / Undo targets only the application's exact managed rule. See [Microsoft's Windows Firewall command guidance](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/configure-with-command-line).
+
+**Domain:** Enter one exact hostname. The app normalizes it and previews a managed Windows hosts entry before confirmation. Wildcards and subdomains are not included, and the app leaves unrelated hosts entries untouched. The table checks whether the managed entry exists; Undo removes only that exact managed entry. Hosts-file changes may require elevation and do not guarantee every browser or DNS path uses the entry.
+
+**Website / service:** In Monitor, a Block action beside a directly observed hostname fills the exact target in the compact form. An IP action appears only when one flow endpoint matches this device's interface addresses; it still requires an exact preview and confirmation. Use **Refresh observed targets** to read newly completed flows without clearing a pending preview. Settings lets you choose a service and specific hostnames from recent activity. Only rechecked direct hostname evidence can produce website rules; DNS-only observations, generic CDNs, ambiguous results, and RF predictions cannot. The preview lists each exact hostname and evidence source. Enforcement uses those hosts entries, never a service-wide IP range. If no suitable hostname was observed, use Domain for a hostname you verified independently. A website may use other domains, subdomains, encrypted DNS, direct IP access, or cached connections, so these rules do not promise complete blocking.
+
+The table shows target, type, enforcement method, **This Windows device only** scope, status, created date, and an Undo / Remove route. “Intent only” means no managed rule is currently verified. “Enabled rule present” means its local configuration exists; it is not a packet-level guarantee. The app never changes the firewall or hosts file merely by monitoring, identifying a service, or saving an intent.
+
+For an authorized manual enforcement check on a disposable Windows demonstration machine, launch the app from an **Administrator PowerShell** after the setup above:
+
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run dashboard.py
+```
+
+In Monitor, preview `192.0.2.10` as an outbound IP and `example.invalid` as an exact domain. Review each proposed rule, type `BLOCK` in the confirmation dialog, verify the table changes from intent to an enabled rule or managed hosts entry, then select the target, click **Remove / Undo selected**, and type `REMOVE`. These reserved example targets avoid intentionally disrupting a real service, but the actions still modify this device and require authorization. Check a detected website proposal without applying it to see the exact observed hostnames and evidence. Do not use a default gateway, DNS resolver, shared CDN IP, or a service you depend on as a demonstration target.
+
+Live capture uses one isolated Python worker and one NFStream meter. Windows multiprocessing imports the worker module rather than executing the Streamlit dashboard in child processes. Each browser session keeps one controller across reruns. Start rejects duplicate workers. Stop requests cooperative cleanup, then terminates and joins the owned process tree if needed, including on idle adapters. A session-specific temporary stop file avoids sharing stdin with Windows multiprocessing. Switching away from Monitor stops the session; a disconnected or nonrefreshing browser loses its capture lease after 30 seconds. Normal interpreter shutdown also cleans up sessions. Cleanup errors block restarting that controller and remain visible.
+
+Monitor refreshes capture status, cumulative flow and byte counters, service charts, and a recent-flow trend every two seconds. Search and status filters apply to the retained recent connections. Technical endpoints, TCP/UDP totals, nDPI fields, Unknown reasons, and historical RF estimates are in an expander. Packet/byte totals refer to completed flows, not every packet currently on the wire. At most 500 recent rows and ten diagnostics are retained; lifetime counters continue increasing. Idle/active flow timeouts are five/ten seconds, so ongoing traffic is split into bounded flow windows.
+
+The Monitor blocking section sits outside the automatic two-second capture and recent-connection refresh fragments. A chart refresh does not submit a rule, clear a preview, or stop capture. Click **Refresh observed targets** when newly captured hostnames or remote IPs should appear in the Block action list; this preserves the current preview.
 
 Live capture explicitly enables 32 nDPI dissections per flow. The worker preserves nDPI application name, category, guessed flag, confidence, and requested server name. Service identification uses direct hostnames from TLS/HTTP/QUIC metadata and strong nDPI application evidence; it does not use Random Forest classes. The editable `data/service_domains.json` holds direct domains, resource domains, and shared infrastructure domains. Domain matching requires an exact hostname or a real subdomain boundary. Direct hostname and strong nDPI results are labeled as hostname or protocol evidence. Resource domains and weaker/guessed nDPI results are heuristic. Conflicting evidence and shared infrastructure are ambiguous. Missing evidence is unknown. nDPI port-only confidence never identifies a service.
 
@@ -67,9 +89,11 @@ Mapping references: [360 Total Security](https://www.360totalsecurity.com/en/), 
 
 The live dashboard groups Unknown flows by cumulative reason: DNS-only observation, visible hostname outside the map, missing or invalid hostname, absent/unsupported nDPI application, port-only nDPI result, or a protocol with no service identity. "Encrypted flow without hostname" means the TLS/QUIC flow has no reported server name; it does **not** prove ECH was used. These reasons describe evidence availability, not ground-truth causes. The live table and CSV retain the per-flow reason. A service hostname identifies a contacted domain, not which Windows executable opened the connection.
 
-NFStream may report a DNS query in `requested_server_name`. The live table shows a mapped DNS query service, if any, with `Lookup only`; the detected service stays Unknown because a lookup alone does not establish a connection. No DNS lookup is attached to a later flow without a reliable association. The dashboard does not attribute a flow to a Windows process. TLS ECH, encrypted DNS, HTTP/3 and QUIC metadata limits, shared CDNs, and unresolved connections can obscure websites. A detected hostname or protocol is evidence about a flow, not a guarantee of the website a person viewed or the executable that opened it. No payload decryption is attempted.
+NFStream may report a DNS query in `requested_server_name`. The live table shows a mapped DNS query service, if any, with `Lookup only`; the detected service stays Unknown because a lookup alone does not establish a connection. No DNS lookup is attached to a later flow without a reliable association. TLS ECH, encrypted DNS, HTTP/3 and QUIC metadata limits, shared CDNs, and unresolved connections can obscure websites. A detected hostname or protocol is evidence about a flow, not a guarantee of the website a person viewed. No payload decryption is attempted.
 
-The service chart and service traffic-usage chart use cumulative completed-flow totals. The TCP/UDP chart uses cumulative totals; the Random Forest chart displays estimates for the most recent 500 compatible flows. The recent-flow CSV export includes endpoints, packet/byte counts, nDPI fields, service evidence, reliability, and separate Random Forest output. The export includes only the retained recent rows, not all historical flows.
+On Windows live capture, a bounded read-only socket sampler uses `psutil.net_connections(kind="inet")`. It records only connected TCP sockets or UDP sockets with a remote endpoint, then requires an exact protocol and bidirectional address/port tuple plus overlap with NFStream's first/last-seen timestamps. Multiple owners, absent timestamps, a closed short-lived socket, access denial, or unavailable endpoint information yield **Unknown Process**. The process name/PID/executable are local OS observations, not a website or browser-tab identity. Offline files cannot be reliably attributed to the current machine's processes. Process paths and network metadata are sensitive; the CSV download requires acknowledgement and is not written into the repository.
+
+The service charts use cumulative completed-flow totals. The recent-flow CSV export includes endpoints, packet/byte counts, nDPI fields, process evidence when available, service reliability, and separate Random Forest output. The export includes only the retained recent rows, not all historical flows.
 
 Live RF predictions use the same saved 61 feature names, ordering, numeric validation, and undefined-statistic handling as PCAP prediction. Missing or unavailable features skip classification and show the reason, rather than fabricating a feature vector. Model errors retain observed traffic with a warning. Outputs and confidence scores are explicitly marked as model estimates; these training classes and confidence scores do not establish the identity of arbitrary modern applications. Short live flow windows can differ from the original training capture distribution.
 
@@ -86,7 +110,7 @@ Generate traffic on that adapter while the check runs (browse a website or play 
 .\.venv\Scripts\python.exe -B -u tools\test_live_capture.py --pcap 'C:\path\to\your\sanitized-sample.pcapng' --duration 20 --require-flows
 ```
 
-To check service identification on Windows, start the dashboard, choose Live Capture and the active Npcap adapter, then click Start. Open `https://www.youtube.com`, `https://www.instagram.com`, or `https://chatgpt.com` in a browser on that adapter. Wait for completed flows, then inspect Detected Hostname, Detected Service, Evidence Source, and Identification Status. A direct hostname should show the corresponding service with hostname evidence when nDPI exposes it. If ECH, encrypted DNS, a shared CDN, or capture timing hides the hostname, Unknown or Ambiguous is expected. Compare the separate Random Forest training-class chart, download the recent-flow CSV, and click Stop. Restart capture to verify the counters reset. The command-line check can show the same observed service totals without Streamlit:
+To check service identification on Windows, start the dashboard, choose **Monitor** and the active Npcap adapter, then click **Start monitoring**. Open `https://www.youtube.com`, `https://www.instagram.com`, or `https://chatgpt.com` in a browser on that adapter. Wait for completed flows, then inspect hostname, service, process, evidence, and status. A direct hostname should show the corresponding service with hostname evidence when nDPI exposes it. If ECH, encrypted DNS, a shared CDN, or capture timing hides the hostname, Unknown or Ambiguous is expected. A process may stay Unknown if its socket closed before a sample or no exact tuple/time match exists. Inspect RF output only in technical details, download the acknowledged recent-flow CSV, click **Stop monitoring**, and restart to verify counters reset. The command-line check can show the same observed service totals without Streamlit:
 
 ```powershell
 .\.venv\Scripts\python.exe -B tools\test_live_capture.py --list
@@ -96,7 +120,7 @@ $device = '<copy an exact adapter name from the list>'
 
 Model artifacts are loaded from the repository's `models` directory regardless of the launch working directory. Random Forest uses `rf_model.pkl` and `feature_names.pkl`; current RF models already return application names, so the retained legacy `label_encoder.pkl` is not used for them. XGBoost uses the three `scenario_b_xgb_*.pkl` files. Missing, unreadable, or mismatched files produce actionable errors. Existing experiment models are preserved and are not selected automatically.
 
-CSV/ARFF inputs must contain all 23 feature names listed in `src/scenario_b.py`; a `label` column is optional for uploaded predictions. Missing columns, empty inputs, and nonnumeric feature values are rejected. Undefined numeric statistics (`NaN` or infinity) are replaced with zero. NFStream features and Scenario B features use different schemas and models.
+**Analyze file** accepts PCAP, PCAPNG, ZIP, CSV, and ARFF through one uploader. It verifies capture magic bytes and archive members; CSV/ARFF must be UTF-8 text. Tabular columns must match exactly one saved feature schema: 61 RF features or all 23 Scenario B features from `src/scenario_b.py`. A `label` column is optional. Ambiguous, unrelated, empty, and nonnumeric inputs are rejected with a reason. Undefined numeric statistics (`NaN` or infinity) are replaced with zero by the existing model preprocessing. The upload limit is 200 MB, matching Streamlit's default. Capture analysis presents observed services and Unknown reasons above the historical RF estimates. Settings keeps both recorded model reports and a button to recalculate Scenario B's split.
 
 Evaluation expects `Scenario B-ARFF.zip` in your Windows user's Downloads folder, containing `Scenario B-ARFF/TimeBasedFeatures-Dataset-15s-AllinOne.arff`. Override its location before launching if necessary:
 
@@ -109,7 +133,7 @@ An unavailable evaluation dataset displays a warning while the other app feature
 
 Run the regression suite without installing a test framework:
 
-The complete 77-test run uses locally generated `data/test_flows.csv` and `data/training_flows.csv` from the cited dataset. Those CSVs are intentionally ignored and are not in a fresh GitHub clone. The Scenario B metric test also needs the external archive; two optional capture integrations need `TRAFFIC_TEST_PCAP`. A fresh clone cannot reproduce the full count until the public dataset-derived fixtures are generated locally. Never substitute private runtime captures for test fixtures.
+The complete 110-test run uses locally generated `data/test_flows.csv` and `data/training_flows.csv` from the cited dataset. Those CSVs are intentionally ignored and are not in a fresh GitHub clone. The Scenario B metric test also needs the external archive; two optional capture integrations need `TRAFFIC_TEST_PCAP`. A fresh clone cannot reproduce the full count until the public dataset-derived fixtures are generated locally. Never substitute private runtime captures for test fixtures.
 
 After obtaining the public archive from UNB, generate the local RF tables from the project root without retraining the saved model:
 
@@ -141,7 +165,9 @@ After this change, another bounded physical Npcap check collected eight flows an
 
 Final checks for the Unknown-reason update: 63 regression tests passed with both optional real PCAPNG integrations enabled, 37 Python files passed syntax parsing, eight core modules imported, `git diff --check` passed, and headless Streamlit health and root requests returned HTTP 200.
 
-The original Scenario B evaluation processed 3,752 test flows and reported 91.20% accuracy on a random-flow split. Firewall/hosts enforcement writes remain untested here. For manual browser verification, select Live Capture and your active adapter, click Start, generate traffic, confirm counters/table/charts update, change the confidence slider, click Stop, and start again. Also check browser disconnect cleanup after 30 seconds, idle-adapter Stop, adapter unplug/reconnect errors, and extended monitoring on your hardware. Windows Firewall and hosts-file changes remain explicit separate actions.
+The original Scenario B evaluation processed 3,752 test flows and reported 91.20% accuracy on a random-flow split. Firewall/hosts enforcement writes remain untested here. For manual browser verification, select **Monitor** and your active adapter, click **Start monitoring**, generate traffic, confirm counters/table/charts update, search and filter recent connections, expand technical details, click **Stop monitoring**, and start again. Also check browser disconnect cleanup after 30 seconds, idle-adapter Stop, adapter unplug/reconnect errors, and extended monitoring on your hardware. Windows Firewall and hosts-file changes remain explicit separate actions.
+
+Latest controlled validation on Windows: a loopback HTTP request produced one captured flow, matched `python.exe` by exact socket/time evidence, and correctly stayed Unknown service. A source-bound Google HTTPS request on Wi-Fi produced two captured flows, both matched `python.exe`, but nDPI exposed generic TLS without a server name; both correctly stayed Unknown rather than being labelled Google from the destination IP or port. The new validation therefore verifies process attribution and conservative Unknown handling, not a new website-detection rate. Previously observed hostname and nDPI service detections are recorded above. No firewall or hosts setting was changed.
 
 ## Privacy and troubleshooting
 

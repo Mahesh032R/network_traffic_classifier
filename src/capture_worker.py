@@ -10,20 +10,25 @@ import threading
 from .model_utils import MODEL_DIR
 from .predict import load_model, predict_with_model
 from .service_identification import identify_service
+from .process_attribution import SocketSampler, UNKNOWN as UNKNOWN_PROCESS
 
 
-def process_flow(flow, model_bundle=None, label_map=None):
+def process_flow(flow, model_bundle=None, label_map=None, process_sampler=None):
     """Keep observed endpoints/stats; classify only a complete RF feature vector."""
     fields = ("src_ip", "dst_ip", "src_port", "dst_port", "protocol",
               "bidirectional_packets", "bidirectional_bytes", "application_name",
               "application_category_name", "application_is_guessed",
               "application_confidence", "requested_server_name",
-              "client_fingerprint", "server_fingerprint", "user_agent", "content_type")
+              "client_fingerprint", "server_fingerprint", "user_agent", "content_type",
+              "bidirectional_first_seen_ms", "bidirectional_last_seen_ms",
+              "bidirectional_duration_ms", "src2dst_packets", "dst2src_packets",
+              "src2dst_bytes", "dst2src_bytes")
     row = {name: getattr(flow, name, None) for name in fields}
     row["first_seen"] = datetime.now(timezone.utc).isoformat()
     row.update(identify_service(**{name: row[name] for name in (
         "application_name", "application_category_name", "application_is_guessed",
         "application_confidence", "requested_server_name", "src_port", "dst_port")}))
+    row.update(process_sampler.match(row) if process_sampler else UNKNOWN_PROCESS)
     row.update({"Predicted App": "Not classified", "Confidence": None,
                 "Prediction Status": "Random Forest model unavailable"})
     if model_bundle is None:
@@ -78,15 +83,22 @@ def run_capture(source, stop_event, emit_message=emit, streamer_factory=None, st
     if start_control is not None:
         start_control()
     emit_message({"type": "ready"})
-    iterator = iter(streamer)
-    for flow in iterator:
-        if stop_event.is_set():
-            try:
-                iterator.throw(KeyboardInterrupt)
-            except (StopIteration, KeyboardInterrupt):
-                pass
-            break
-        emit_message({"type": "flow", "row": process_flow(flow, bundle, label_map)})
+    sampler = SocketSampler() if os.name == "nt" and str(source).startswith(r"\Device\NPF_") else None
+    try:
+        if sampler:
+            sampler.start()
+        iterator = iter(streamer)
+        for flow in iterator:
+            if stop_event.is_set():
+                try:
+                    iterator.throw(KeyboardInterrupt)
+                except (StopIteration, KeyboardInterrupt):
+                    pass
+                break
+            emit_message({"type": "flow", "row": process_flow(flow, bundle, label_map, sampler)})
+    finally:
+        if sampler:
+            sampler.stop()
 
 
 def _listen_for_stop(stop_event, control_file, parent_pid):

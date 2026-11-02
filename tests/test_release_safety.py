@@ -27,7 +27,10 @@ class ReleaseSafetyTests(unittest.TestCase):
         self.assertTrue(frame['Detected Hostname'].iloc[0].startswith('='))
 
     def test_firewall_enforcement_requires_confirmation_and_valid_ip(self):
-        with patch.object(firewall, '_run_netsh') as command:
+        states = iter(['absent', 'active', 'active', 'absent'])
+        with patch.object(firewall, '_run_netsh') as command, patch.object(
+            firewall, 'critical_ip_reasons', return_value=[]
+        ), patch.object(firewall, 'managed_rule_state', side_effect=lambda *_a, **_k: next(states)):
             with self.assertRaisesRegex(PermissionError, 'Confirm'):
                 firewall.block_ip('192.0.2.10')
             command.assert_not_called()
@@ -37,7 +40,7 @@ class ReleaseSafetyTests(unittest.TestCase):
             command.assert_not_called()
             firewall.block_ip('192.0.2.10', confirmed=True)
             self.assertIn('remoteip=192.0.2.10', command.call_args.args[0])
-            firewall.unblock_ip('192.0.2.10')
+            firewall.unblock_ip('192.0.2.10', confirmed=True)
             self.assertIn('delete', command.call_args.args[0])
 
     def test_hosts_enforcement_requires_confirmation_and_can_rollback(self):
@@ -54,7 +57,7 @@ class ReleaseSafetyTests(unittest.TestCase):
                         domain_blocker.block_domain(invalid, confirmed=True)
                 domain_blocker.block_domain('example.com', confirmed=True)
                 self.assertTrue(domain_blocker.is_domain_blocked('example.com'))
-                domain_blocker.unblock_domain('example.com')
+                domain_blocker.unblock_domain('example.com', confirmed=True)
                 self.assertFalse(domain_blocker.is_domain_blocked('example.com'))
                 self.assertEqual(hosts.read_text(encoding='utf-8'), original)
 
