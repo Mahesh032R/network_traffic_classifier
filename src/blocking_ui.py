@@ -3,6 +3,7 @@ import hashlib
 
 import pandas as pd
 import streamlit as st
+from .streamlit_compat import alt_text
 
 from . import blocklist, domain_blocker, firewall
 from .blocking_center import (SCOPE, eligible_service_hosts, entry_status,
@@ -43,7 +44,7 @@ def confirm_enforcement(previews, recent_flows):
                                 "Method": item["method"], "Direction": item.get("direction", "exact hostname"),
                                 "Exact coverage": item["coverage"]}
                                for item in previews]), hide_index=True,
-                 alt="Exact Windows rules awaiting confirmation")
+                 **alt_text(st.dataframe, "Exact Windows rules awaiting confirmation"))
     st.caption("Hosts entries cover only the exact listed names. IP rules may affect unrelated services on shared infrastructure.")
     phrase = st.text_input("Type BLOCK to confirm these exact targets", key="confirm_block_phrase")
     critical = [reason for item in previews for reason in item.get("critical_reasons", [])]
@@ -165,7 +166,7 @@ def _render_advanced_inputs(recent_flows):
             candidates = eligible_service_hosts(recent_flows, service)
             if candidates:
                 st.dataframe(pd.DataFrame(candidates), hide_index=True,
-                             alt="Observed hostnames and protocol evidence for the selected service")
+                             **alt_text(st.dataframe, "Observed hostnames and protocol evidence for the selected service"))
                 names = [item["hostname"] for item in candidates]
                 selected = st.multiselect("Exact hostnames to propose", names, key="blocking_hostnames",
                                           on_change=_clear_preview)
@@ -275,7 +276,7 @@ def render_blocking_center(recent_flows, *, compact=False):
                      "Direction": item.get("direction", "exact hostname"),
                      "Scope": item["scope"], "Coverage": item["coverage"]} for item in previews]
             st.dataframe(pd.DataFrame(rows), hide_index=True,
-                         alt="Preview of exact device-local firewall or hosts rules")
+                         **alt_text(st.dataframe, "Preview of exact device-local firewall or hosts rules"))
             if any(item["type"] == "IP" for item in previews):
                 st.warning("Shared hosting and CDN addresses may serve unrelated sites. An IP rule can disrupt more than the named service.")
             for item in previews:
@@ -313,7 +314,7 @@ def render_blocking_center(recent_flows, *, compact=False):
              "Created date (UTC)": item["created"], "Remove / Undo": "Select below"}
             for item in entries]
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch",
-                 alt="Saved intended targets and verified device-local enforcement status")
+                 **alt_text(st.dataframe, "Saved intended targets and verified device-local enforcement status"))
     selected_target = st.selectbox("Manage saved target", [item["target"] for item in entries],
                                    key="managed_block_target")
     selected_entry = next(item for item in entries if item["target"] == selected_target)

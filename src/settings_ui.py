@@ -8,6 +8,7 @@ from src.scenario_b import load_scenario_b
 from src.blocking_ui import render_blocking_center
 from src.model_utils import prepare_features, PROJECT_ROOT
 from src.activity_ui import render_activity_settings
+from src.streamlit_compat import alt_text
 
 
 def render_settings(model, le, feature_names, detect_capture_interfaces, recent_flows=(), activity=None):
@@ -39,7 +40,7 @@ def render_settings(model, le, feature_names, detect_capture_interfaces, recent_
                     if path.is_file():
                         st.caption(caption)
                         st.dataframe(pd.read_csv(path), width="stretch", hide_index=True,
-                                     alt=f"{title} {caption.lower()}")
+                                     **alt_text(st.dataframe, f"{title} {caption.lower()}"))
         if st.button("Recalculate Scenario B recorded split", key="run_scenario_b_eval"):
             st.session_state["show_scenario_b_eval"] = True
         if st.session_state.get("show_scenario_b_eval"):

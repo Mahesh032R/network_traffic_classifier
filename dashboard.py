@@ -19,6 +19,7 @@ from src.settings_ui import render_settings
 from src.blocking_ui import render_monitor_blocking
 from src.activity_ui import activity_resource, render_rate_cards, render_history, render_alerts
 from src.model_utils import PROJECT_ROOT
+from src.streamlit_compat import alt_text
 
 
 st.set_page_config(page_title="Network intelligence", page_icon=":material/network_check:",
@@ -71,9 +72,9 @@ def show_evidence_summary(frame):
                     Bytes=("bidirectional_bytes", "sum"))
                .sort_values("Bytes", ascending=False).reset_index())
     st.bar_chart(summary.set_index("Detected Service")["Bytes"],
-                 alt="Transferred bytes by detected service")
+                 **alt_text(st.bar_chart, "Transferred bytes by detected service"))
     st.dataframe(summary, width="stretch", hide_index=True,
-                 alt="Detected services, connection counts, and transferred bytes")
+                 **alt_text(st.dataframe, "Detected services, connection counts, and transferred bytes"))
 
 
 activity = activity_resource(str(Path(os.environ.get('NTC_HISTORY_DIR', PROJECT_ROOT / 'data/local_history')) / 'activity.sqlite3'))
@@ -223,7 +224,7 @@ if section == "Monitor":
                        "bidirectional_bytes", "Upload Bytes", "Download Bytes",
                        "Identification Status", "Evidence Source", "Unknown Reason"]
             st.dataframe(filtered.iloc[::-1].reindex(columns=primary), width="stretch", hide_index=True,
-                         alt="Recent services, process observations, hostnames, bytes, and evidence")
+                         **alt_text(st.dataframe, "Recent services, process observations, hostnames, bytes, and evidence"))
             st.caption(f"Showing {len(filtered)} of {len(recent)} recent rows; {snapshot['total_flows']} completed flows total. Times are UTC.")
             with st.expander("Technical flow details and model estimates"):
                 st.caption("The Random Forest estimates only five historical training classes. They do not verify a service or process identity.")
@@ -237,14 +238,14 @@ if section == "Monitor":
                           "Predicted App", "Confidence",
                           "Prediction Status"]
                 st.dataframe(filtered.iloc[::-1].reindex(columns=detail), width="stretch", hide_index=True,
-                             alt="Technical endpoints, nDPI metadata, process evidence, and historical RF estimates")
+                             **alt_text(st.dataframe, "Technical endpoints, nDPI metadata, process evidence, and historical RF estimates"))
                 protocols = pd.DataFrame.from_dict(snapshot["protocols"], orient="index").rename_axis("Protocol").reset_index()
-                st.dataframe(protocols, hide_index=True, alt="TCP, UDP, and other protocol totals")
+                st.dataframe(protocols, hide_index=True, **alt_text(st.dataframe, "TCP, UDP, and other protocol totals"))
                 if snapshot["unknown_reasons"]:
                     st.dataframe(pd.DataFrame(sorted(snapshot["unknown_reasons"].items(),
                                                      key=lambda pair: pair[1], reverse=True),
                                               columns=["Unknown reason", "Flows"]), hide_index=True,
-                                 alt="Reasons service identity could not be established")
+                                 **alt_text(st.dataframe, "Reasons service identity could not be established"))
             show_export(recent.iloc[::-1], "live")
         if snapshot["diagnostics"]:
             with st.expander("Capture diagnostics"):
@@ -297,15 +298,15 @@ elif section == "Analyze file":
                                "Identification Status", "Evidence Source", "Unknown Reason", "DNS Query Service",
                                "src_ip", "dst_ip", "bidirectional_bytes"]
                     st.dataframe(result.reindex(columns=columns), width="stretch", hide_index=True,
-                                 alt="Uploaded capture service evidence and flow endpoints")
+                                 **alt_text(st.dataframe, "Uploaded capture service evidence and flow endpoints"))
                 else:
                     st.caption("These are historical model category estimates, not observed website or executable identities.")
                     st.dataframe(result, width="stretch", hide_index=True,
-                                 alt="Model estimates for uploaded dataset")
+                                 **alt_text(st.dataframe, "Model estimates for uploaded dataset"))
                 with st.expander("Advanced model estimates and all flow fields"):
                     st.caption("Random Forest and XGBoost serve different training tasks. Confidence is model output, not verified identity.")
                     st.dataframe(result, width="stretch", hide_index=True,
-                                 alt="All uploaded flow fields and separate model estimates")
+                                 **alt_text(st.dataframe, "All uploaded flow fields and separate model estimates"))
                 show_export(result, "analysis")
 
 else:

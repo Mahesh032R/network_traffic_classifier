@@ -7,6 +7,7 @@ import streamlit as st
 from .activity import ActivityMonitor
 from .blocklist import normalize_target
 from .history import fingerprint
+from .streamlit_compat import alt_text
 
 
 @st.cache_resource
@@ -70,7 +71,8 @@ def render_history(activity, snapshot):
         frame['Download Mbps'] = frame['download'] * 8 / frame['seconds'] / 1_000_000
         frame['Upload Mbps'] = frame['upload'] * 8 / frame['seconds'] / 1_000_000
         st.line_chart(frame.set_index('Time (UTC)')[['Download Mbps', 'Upload Mbps']],
-                      color=['#1536A6', '#06B6D4'], alt='Measured adapter throughput averaged over observed intervals')
+                      color=['#1536A6', '#06B6D4'],
+                      **alt_text(st.line_chart, 'Measured adapter throughput averaged over observed intervals'))
         st.caption(f"Observed adapter bytes: {(frame['download'].sum() + frame['upload'].sum()) / 1_000_000:.2f} MB. "
                    'Minute buckets include only sampled intervals; gaps and application downtime are unmeasured.')
     else:
@@ -111,7 +113,7 @@ def render_history(activity, snapshot):
         known = frame[~frame['service'].isin(['Unknown', 'Ambiguous', 'Not stored'])]
         if not known.empty:
             st.bar_chart(known.groupby('service')['bytes'].sum().nlargest(10), color='#1536A6',
-                         alt='Top services by completed-flow bytes in selected period')
+                         **alt_text(st.bar_chart, 'Top services by completed-flow bytes in selected period'))
         else:
             st.info('No identified services for these filters.')
     with right:
@@ -119,7 +121,7 @@ def render_history(activity, snapshot):
         known = frame[~frame['process'].isin(['Unknown Process', 'Not stored'])]
         if not known.empty:
             st.bar_chart(known.groupby('process')['bytes'].sum().nlargest(10), color='#06B6D4',
-                         alt='Top reliably attributed process names by observed bytes')
+                         **alt_text(st.bar_chart, 'Top reliably attributed process names by observed bytes'))
         else:
             st.info('No reliable process attribution for these filters.')
     if not frame.empty:
@@ -128,7 +130,7 @@ def render_history(activity, snapshot):
                                                Download_bytes=('download', lambda values: values.sum(min_count=1)),
                                                Last_seen=('last_seen', 'max')).sort_values('Bytes', ascending=False).head(10)
         summary['Last_seen'] = pd.to_datetime(summary['Last_seen'], unit='s', utc=True)
-        st.dataframe(summary, alt='Service byte totals, flow counts and last observed connection time')
+        st.dataframe(summary, **alt_text(st.dataframe, 'Service byte totals, flow counts and last observed connection time'))
         st.caption('Directional totals include only flows with one verified local endpoint. Blank values mean unknown direction.')
     destinations = []
     for row in snapshot['flows']:
@@ -149,7 +151,8 @@ def render_history(activity, snapshot):
     if destinations:
         st.caption('Top remote destinations · recent capture only; endpoints are never saved in history')
         st.bar_chart(pd.DataFrame(destinations).groupby('Destination')['Bytes'].sum().nlargest(10),
-                     color='#1536A6', alt='Recent remote destinations by observed bytes; retained in memory only')
+                     color='#1536A6',
+                     **alt_text(st.bar_chart, 'Recent remote destinations by observed bytes; retained in memory only'))
 
 
 @st.fragment(run_every='2s')
@@ -170,7 +173,7 @@ def render_alerts(activity):
     frame = pd.DataFrame(rows)
     frame['Time (UTC)'] = pd.to_datetime(frame['timestamp'], unit='s', utc=True)
     st.dataframe(frame[['Time (UTC)', 'kind', 'severity', 'message', 'read']], hide_index=True,
-                 alt='Local informational events and warnings with read state')
+                 **alt_text(st.dataframe, 'Local informational events and warnings with read state'))
     st.button('Mark all alerts read', key='activity_read', on_click=activity.alert_action, args=('read',))
     selected = st.selectbox('Alert to dismiss', [row['id'] for row in rows],
                             format_func=lambda key: next(row['kind'] + ' · ' + datetime.fromtimestamp(row['timestamp']).isoformat(timespec='seconds') for row in rows if row['id'] == key),
